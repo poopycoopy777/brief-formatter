@@ -44,6 +44,28 @@ class Block:
 
 
 # ---------------------------------------------------------------------------
+# Reserved sections
+# ---------------------------------------------------------------------------
+
+# The JDF 1987 form numbers its Table of Contents and Table of Authorities as
+# full sections, so every later section has to skip those numbers.  This tool
+# removes the TOC/TOA *content*, but the numbering slots must still be
+# reserved or every following section is numbered too low.
+_KIND_TOC = "toc"
+_KIND_TOA = "toa"
+
+
+@dataclass
+class SectionHeading:
+    """A numbered section heading detected in the source."""
+
+    number: str
+    text: str
+    kind: str = MAJOR
+    insert_after: int = -1      # -1 means "number it in sequence"
+
+
+# ---------------------------------------------------------------------------
 # Recognisers
 # ---------------------------------------------------------------------------
 
@@ -150,6 +172,67 @@ def _is_toc_entry(line: str) -> bool:
     if not stripped:
         return False
     return bool(_TOC_ENTRY.search(stripped)) or bool(_TOC_LABEL_ONLY.match(stripped))
+
+
+def _reserved_sections(original: list[str], first: int) -> list[SectionHeading]:
+    """Return the TOC/TOA headings whose numbers must stay reserved.
+
+    Walks from the top of the brief.  Ordinary numbered sections are stepped
+    over (the Certificate of Compliance comes before the TOC), and the walk
+    stops at the first numbered section that follows the TOC/TOA material --
+    past that point nothing has been removed from the source and sequential
+    renumbering would collide with numbers the author already used.
+    """
+    found: list[SectionHeading] = []
+    index = first
+    seen_toc = False
+
+    while index < len(original):
+        line = original[index].strip()
+        if not line:
+            index += 1
+            continue
+
+        if _is_toc_heading(line):
+            numbered = _NUMBERED.match(line)
+            if numbered is None:
+                # An unnumbered mention inside the TOC body ("Table of
+                # Authorities:") is an entry, not a section slot.
+                index += 1
+                continue
+            plain = numbered.group(2).strip()
+            lowered = plain.lower()
+            found.append(
+                SectionHeading(
+                    number=numbered.group(1),
+                    text=plain,
+                    kind=_KIND_TOA if "authorit" in lowered else _KIND_TOC,
+                )
+            )
+            seen_toc = True
+            index += 1
+            continue
+
+        if _is_toc_entry(line):
+            index += 1
+            continue
+
+        numbered = _NUMBERED.match(line)
+        if numbered and not line.endswith("."):
+            if seen_toc:
+                break               # numbering resumes: stop reserving
+            index += 1
+            continue
+
+        if _is_major_caps(line) or _is_issue_heading(line):
+            if seen_toc:
+                break
+            index += 1
+            continue
+
+        index += 1
+
+    return found
 
 
 def _is_caps(line: str) -> bool:
@@ -347,6 +430,7 @@ class ParseResult:
     skipped_caption: bool
     skipped_toc: bool
     removed_duplicates: int = 0
+    reserved: list[SectionHeading] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +501,11 @@ def parse(text: str, *, skip_caption: bool = True, skip_toc: bool = True,
 
     start = _skip_caption(lines) if skip_caption else 0
     skipped_caption = start > 0
+    reserved: list[SectionHeading] = []
     if skip_toc:
+        # Capture the TOC/TOA numbers before their content is removed, so the
+        # sections after them can be numbered correctly.
+        reserved = _reserved_sections(lines, start)
         trimmed = _strip_toc_blocks(lines[start:])
         skipped_toc = len(trimmed) < len(lines[start:])
         lines = lines[:start] + trimmed
@@ -484,7 +572,11 @@ def parse(text: str, *, skip_caption: bool = True, skip_toc: bool = True,
         m = _NUMBERED.match(line)
         if m:
             rest = m.group(2).strip()
-            if _is_toc_heading(line):
+            if skip_toc and _is_toc_heading(line):
+                # Its content was stripped; the number is reserved separately
+                # by _reserved_sections.  When the tables are being kept
+                # (--include-toc) the heading falls through and is emitted
+                # like any other section, so there is no duplicate slot.
                 continue
             if in_issues and not _is_major_caps(rest):
                 # A numbered item inside an Issues list, even though the
@@ -557,7 +649,7 @@ def parse(text: str, *, skip_caption: bool = True, skip_toc: bool = True,
     if collapse_duplicates:
         blocks, removed = collapse_duplicate_paragraphs(blocks)
 
-    return ParseResult(blocks, skipped_caption, skipped_toc, removed)
+    return ParseResult(blocks, skipped_caption, skipped_toc, removed, reserved)
 
 
 def _label_and_text(label: str) -> tuple[str, str]:

@@ -151,6 +151,19 @@ def _join_label_pairs(blocks: list) -> list[tuple[str, object, object]]:
     return out
 
 
+def _add_placeholder_heading(doc, title: str, number: int):
+    """A reserved section such as "2. Table of Contents".
+
+    The heading is numbered like any other section.  The entries themselves
+    are not generated -- pagination is only known once the brief is laid out
+    -- so a blank paragraph is left beneath it for the writer to fill in.
+    """
+    paragraph = _add_major_heading(doc, title, number)
+    spacer = doc.add_paragraph()
+    _docx_util().set_line_height(spacer, _docx_util().BODY_LINE_PT)
+    return paragraph
+
+
 def _add_body(doc, text: str, notes, footnotes: list[str], *,
               first_line: float = _BODY_FIRST_LINE, left=None, italic=False):
     """Add one body paragraph, attaching any footnotes it carries.
@@ -483,6 +496,31 @@ def build_brief(text: str, output: str | Path, *,
 
     notes = _docx_util().FootnoteStore()
     major_number = 0
+    major_to_insert = -1
+    reserved = list(result.reserved)
+
+    if reserved:
+        # The TOC/TOA content is not generated, so the author's own numbering
+        # cannot be relied on: sections are renumbered in sequence, with the
+        # reserved TOC/TOA slots inserted at the end of the Certificate of
+        # Compliance (which the form numbers 1).
+        major_number = 0
+        major_to_insert = 1
+
+    def add_reserved() -> None:
+        """Emit the reserved TOC/TOA sections at their fixed numbers.
+
+        These carry the numbers the author gave them, so the running counter is
+        left alone; the following sections continue from the last reserved
+        number.
+        """
+        nonlocal major_to_insert, major_number
+        for section in reserved:
+            _add_placeholder_heading(
+                document, _strip_existing_number(section.text), int(section.number)
+            )
+            major_number = int(section.number)
+        major_to_insert = 0         # done: never insert again
 
     for kind, block, partner in _join_label_pairs(result.blocks):
         if kind == "labeled":
@@ -490,9 +528,15 @@ def build_brief(text: str, output: str | Path, *,
                 document, block.text, partner.text, notes, partner.footnotes
             )
         elif kind == MAJOR:
+            if major_to_insert == 2:
+                # The TOC/TOA slots go at the end of the first section, after
+                # the Certificate of Compliance's own text and signature line.
+                add_reserved()
             major_number += 1
             heading = _strip_existing_number(block.text)
             _add_major_heading(document, heading, major_number)
+            if major_to_insert == 1:
+                major_to_insert = 2
         elif kind == ISSUE:
             _add_issue_heading(document, _strip_existing_number(block.text))
         elif kind == SUB:
@@ -511,6 +555,9 @@ def build_brief(text: str, output: str | Path, *,
                 _add_lettered_body(document, block.letter, block.text)
             else:
                 _add_body(document, block.text, notes, block.footnotes)
+
+    if major_to_insert in (1, 2):
+        add_reserved()
 
     notes.attach(document)
 

@@ -93,8 +93,52 @@ rather than size. Footnotes and the footer are 12pt.
 | Case names and reporter citations | *italicised automatically* |
 | Footer | `Page N` in the right margin (live field) |
 
-Sections are renumbered sequentially from the order they appear, so a stray
-`3.` before a table of authorities cannot leak into the finished brief.
+Sections are renumbered sequentially, with the **Table of Contents and Table of
+Authorities numbered as full sections**, because the JDF form numbers them. The
+default output is:
+
+```
+1. Certificate of Compliance
+2. Table of Content          <- heading only, ready to fill in
+3. Table of Authorities      <- heading only, ready to fill in
+4. Issues Presented for Review
+5. Statement of the Case
+6. Summary of the Argument
+7. Argument
+8. Conclusion
+9. Certificate of Service
+```
+
+The two tables get **numbered headings with blank space beneath them** rather
+than generated entries, because the page numbers they cite are only known once
+the brief is laid out. Fill them in after you export, then type the page numbers
+in.
+
+Their content is read from your source when you keep it: pass `--include-toc`
+and the tables render as written, with your own numbering preserved (no
+duplicate slots are added).
+
+### Paragraphs
+
+The two common ways of writing a brief are both handled:
+
+* **One paragraph per line**, as a `.txt` export usually arrives. Each line is
+  its own paragraph.
+* **Hard-wrapped prose**, as a PDF text extraction produces. A line that stops
+  mid-sentence is re-joined with the next one.
+
+The decision is made per line: a source line that ends a sentence (`.`, `?`,
+`!`, optionally followed by a closing quote or bracket) ends the paragraph.
+
+### Repeated paragraphs
+
+An editing pass sometimes leaves the same paragraph twice, differing only in
+punctuation — typically an em-dash version and a hyphen version. When a body
+paragraph is ≥90% similar to the one immediately before it, the shorter copy is
+dropped. Only *consecutive* paragraphs are compared, so a sentence legitimately
+repeated in the summary and again in the argument is kept. Pass
+`--keep-duplicates` to switch this off; `--dry-run` reports how many were
+removed.
 
 ### The footer
 
@@ -126,28 +170,6 @@ Both exist to survive the trip through Google Docs:
   the sample. An exact height is honoured identically everywhere.
 * **1.5" top margin** rather than 1". The sample begins its body at y=107.5–108
   on every page, which is 1.5" down, not 1".
-
-### Paragraphs
-
-The two common ways of writing a brief are both handled:
-
-* **One paragraph per line**, as a `.txt` export usually arrives. Each line is
-  its own paragraph.
-* **Hard-wrapped prose**, as a PDF text extraction produces. A line that stops
-  mid-sentence is re-joined with the next one.
-
-The decision is made per line: a source line that ends a sentence (`.`, `?`,
-`!`, optionally followed by a closing quote or bracket) ends the paragraph.
-
-### Repeated paragraphs
-
-An editing pass sometimes leaves the same paragraph twice, differing only in
-punctuation — typically an em-dash version and a hyphen version. When a body
-paragraph is ≥90% similar to the one immediately before it, the shorter copy is
-dropped. Only *consecutive* paragraphs are compared, so a sentence legitimately
-repeated in the summary and again in the argument is kept. Pass
-`--keep-duplicates` to switch this off; `--dry-run` reports how many were
-removed.
 
 ---
 

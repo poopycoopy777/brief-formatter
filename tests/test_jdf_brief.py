@@ -195,6 +195,77 @@ Other Authorities Cited
         for residue in ("Table of Author", "Court Rules", "Pg. 9", "Statutes"):
             self.assertNotIn(residue, joined)
 
+    def test_toc_and_toa_numbers_are_reserved(self):
+        # The source numbers the TOC as 2 and the TOA as 3, even though their
+        # content is stripped.  Those slots must stay reserved, or every later
+        # section is numbered too low and collides once the tables are added.
+        text = CAPTION + """
+\t1. Certificate of Compliance
+I certify the brief complies.
+
+2. Table of Content
+Table of Authorities: Pg. 3
+Statement of the Case: Pg. 5
+
+3. Table of Authorities
+Cases
+Statutes
+
+4. ISSUES PRESENTED FOR REVIEW
+1. Whether the district court erred.
+
+5. STATEMENT OF THE CASE
+The district court entered judgment.
+"""
+        result = parse(text)
+        self.assertEqual(
+            [(s.number, s.kind) for s in result.reserved],
+            [("2", "toc"), ("3", "toa")],
+        )
+
+    def test_reserved_numbers_reach_the_document(self):
+        import docx
+
+        text = CAPTION + """
+\t1. Certificate of Compliance
+I certify the brief complies.
+
+2. Table of Content
+Statement of the Case: Pg. 5
+
+3. Table of Authorities
+Cases
+
+4. ISSUES PRESENTED FOR REVIEW
+1. Whether the district court erred.
+
+5. CONCLUSION
+The judgment should be reversed.
+"""
+        out = Path(tempfile.mkdtemp(prefix="jdf-reserved-")) / "reserved.docx"
+        build_brief(text, out)
+
+        numbered = [
+            p.text.replace("\t", " ")
+            for p in docx.Document(str(out)).paragraphs
+            if re.match(r"^\d+\.\t", p.text)
+        ]
+        # Certificate 1, TOC 2, TOA 3, then the rest renumbered in sequence.
+        self.assertTrue(numbered[0].startswith("1. Certificate of Compliance"))
+        self.assertTrue(numbered[1].startswith("2. Table of Content"))
+        self.assertTrue(numbered[2].startswith("3. Table of Authorities"))
+        self.assertTrue(numbered[3].startswith("4. ISSUES PRESENTED FOR REVIEW"))
+        self.assertTrue(numbered[4].startswith("5. CONCLUSION"))
+
+    def test_including_the_toc_keeps_the_authors_numbering(self):
+        # With --include-toc nothing is stripped, so the reserved slots must
+        # not be added again (there would be two "2." headings).
+        text = "1. Certificate of Compliance\nI certify.\n\n2. Table of Content\nCases\n"
+        result = parse(text, skip_toc=False)
+        self.assertEqual(result.reserved, [])
+        headings = [b.text for b in result.blocks if b.kind == MAJOR]
+        self.assertEqual(headings, ["Certificate of Compliance", "Table of Content"])
+
     def test_issue_headings_are_their_own_block_kind(self):
         text = """1. ARGUMENT
 ISSUE 1: THE COURT APPLIED THE WRONG STATUTE.
