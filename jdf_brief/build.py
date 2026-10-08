@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 from .citations import italic_segments
-from .parse import ISSUE, LEGAL, LIST, MAJOR, QUOTE, SUB, parse
+from .parse import BODY, ISSUE, LEGAL, LIST, MAJOR, QUOTE, SUB, Block, parse
 
 
 def _docx_util():
@@ -74,6 +74,81 @@ def _emit_chunks(adder, chunks: list[str], footnotes: list[str]) -> None:
     for index, chunk in enumerate(chunks):
         is_last = index == len(chunks) - 1
         adder(chunk, footnotes if is_last else [])
+
+
+def _add_labeled_body(doc, label: str, text: str, notes, footnotes: list[str]):
+    """A "Word Limits:" style paragraph: bold label, content on the 1.0" stop.
+
+    Matches the sample, which sets the label bold at 0.5" and tabs the content
+    to 1.0", wrapping back to 1.0" (a 0.5" hanging indent).
+    """
+    du = _docx_util()
+    from docx.enum.text import WD_TAB_ALIGNMENT
+
+    paragraph = doc.add_paragraph()
+    du.set_line_height(paragraph, du.BODY_LINE_PT)
+    du.set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
+    du.keep_lines_together(paragraph)
+    paragraph.paragraph_format.tab_stops.add_tab_stop(
+        _inch(_SUB_TEXT), WD_TAB_ALIGNMENT.LEFT
+    )
+
+    label_run = paragraph.add_run(label + "\t")
+    du.set_run_font(label_run, size=du.BODY_PT, bold=du.LABEL_BOLD)
+    du.add_runs(paragraph, italic_segments(text))
+    for note_text in footnotes:
+        note_id = notes.add([(note_text, False, False)])
+        du.add_footnote_reference(paragraph, note_id)
+    return paragraph
+
+
+# A whole paragraph that is nothing but a lead-in label: "Word Limits:",
+# "Standard of Review:", "Preservation:".  The JDF sample sets these bold on
+# the 0.5" stop with the content tabbed to 1.0" on the same line.
+_LABEL_ONLY = re.compile(r"^[A-Z][A-Za-z' \-]{2,34}:$")
+
+
+def _is_label_only(text: str) -> bool:
+    return bool(_LABEL_ONLY.match(text.strip()))
+
+
+def _join_label_pairs(blocks: list) -> list[tuple[str, object, object]]:
+    """Flatten body text into paragraphs, pairing labels with their content.
+
+    A lead-in label is often not its own block: the source runs
+    "... Including: Word Limits: My brief has ..." onto one line, and
+    :func:`_split_label` separates them.  Splitting therefore happens here,
+    before pairing, so a bare "Word Limits:" is matched with the paragraph
+    that follows it and the two render on one line.
+
+    Yields ``(kind, first, second)``; ``second`` is None unless the first is a
+    label that owns the following paragraph.
+    """
+    flat: list = []
+    for block in blocks:
+        if block.kind == BODY and not block.letter:
+            for chunk in _split_label(block.text):
+                flat.append(Block(BODY, chunk, footnotes=block.footnotes))
+        else:
+            flat.append(block)
+
+    out: list[tuple[str, object, object]] = []
+    index = 0
+    while index < len(flat):
+        block = flat[index]
+        nxt = flat[index + 1] if index + 1 < len(flat) else None
+        if (
+            block.kind == BODY
+            and nxt is not None
+            and nxt.kind == BODY
+            and _is_label_only(block.text)
+        ):
+            out.append(("labeled", block, nxt))
+            index += 2
+            continue
+        out.append((block.kind, block, None))
+        index += 1
+    return out
 
 
 def _add_body(doc, text: str, notes, footnotes: list[str], *,
@@ -369,8 +444,18 @@ def _configure_styles(document) -> None:
 def build_brief(text: str, output: str | Path, *,
                 skip_caption: bool = True,
                 skip_toc: bool = True,
-                collapse_duplicates: bool = True) -> Path:
-    """Format *text* as a JDF 1987 brief and write it to *output*."""
+                collapse_duplicates: bool = True,
+                footer_left: str | None = None,
+                footer_center: str | None = None,
+                footer_right: str | None = None,
+                footer_page_number: bool = True) -> Path:
+    """Format *text* as a JDF 1987 brief and write it to *output*.
+
+    The footer defaults to a bare page number.  The JDF sample's own footer
+    text ("JDF 1987 - Sample Opening Brief" / "R: July 12, 2021") belongs to
+    the court's sample form, so it is not reproduced on a real filing; pass
+    *footer_left* / *footer_center* to add your own identifier.
+    """
     from docx import Document
 
     result = parse(text, skip_caption=skip_caption, skip_toc=skip_toc,
@@ -385,41 +470,47 @@ def build_brief(text: str, output: str | Path, *,
     section.top_margin = _inch(_TOP_MARGIN)
     for attr in ("left_margin", "right_margin", "bottom_margin"):
         setattr(section, attr, _inch(1))
-    _docx_util().build_footer(section)
+    util = _docx_util()
+    util.build_footer(
+        section,
+        left=util.DEFAULT_FOOTER_LEFT if footer_left is None else footer_left,
+        center=(util.DEFAULT_FOOTER_CENTER if footer_center is None
+                else footer_center),
+        right=(util.DEFAULT_FOOTER_RIGHT if footer_right is None
+               else footer_right),
+        page_number=footer_page_number,
+    )
 
     notes = _docx_util().FootnoteStore()
     major_number = 0
 
-    for block in result.blocks:
-        if block.kind == MAJOR:
+    for kind, block, partner in _join_label_pairs(result.blocks):
+        if kind == "labeled":
+            _add_labeled_body(
+                document, block.text, partner.text, notes, partner.footnotes
+            )
+        elif kind == MAJOR:
             major_number += 1
             heading = _strip_existing_number(block.text)
             _add_major_heading(document, heading, major_number)
-        elif block.kind == ISSUE:
+        elif kind == ISSUE:
             _add_issue_heading(document, _strip_existing_number(block.text))
-        elif block.kind == SUB:
+        elif kind == SUB:
             _add_sub_heading(document, block.text, block.letter)
-        elif block.kind == LIST:
-            _emit_chunks(
-                lambda chunk, fn: _add_list_item(document, chunk),
-                _split_label(block.text), block.footnotes)
-        elif block.kind in (QUOTE, LEGAL):
+        elif kind == LIST:
+            _add_list_item(document, block.text)
+        elif kind in (QUOTE, LEGAL):
             # Both sit at a half inch with no first-line indent; a quoted
             # passage is additionally italicised.
-            def add_indented(chunk, fn, _kind=block.kind):
-                italic = _kind == QUOTE and not chunk.endswith(":")
-                _add_body(document, chunk, notes, fn,
-                          first_line=_inch(0), left=_inch(_QUOTE_LEFT),
-                          italic=italic)
-
-            _emit_chunks(add_indented, _split_label(block.text), block.footnotes)
+            italic = kind == QUOTE and not block.text.endswith(":")
+            _add_body(document, block.text, notes, block.footnotes,
+                      first_line=_inch(0), left=_inch(_QUOTE_LEFT),
+                      italic=italic)
         else:
             if block.letter:
                 _add_lettered_body(document, block.letter, block.text)
             else:
-                _emit_chunks(
-                    lambda chunk, fn: _add_body(document, chunk, notes, fn),
-                    _split_label(block.text), block.footnotes)
+                _add_body(document, block.text, notes, block.footnotes)
 
     notes.attach(document)
 

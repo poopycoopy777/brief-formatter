@@ -336,6 +336,12 @@ The judgment should be reversed.
 BRIEF = """1. Certificate of Compliance
 I certify that this brief complies with C.A.R. 28 and 32.[^ The limit is 9,500 words.]
 
+Word Limits:
+My brief has 4,046 words, which is not more than the 9,500 word limit.
+
+Standard of Review
+The selection of the governing framework is reviewed de novo.
+
 2. STATEMENT OF THE CASE
 A. Jurisdiction
 The district court entered judgment on May 22, 2026. CF, p 123. The court relied on Ion Media Networks, Inc. v. West, 2025 COA 66, P 36.
@@ -483,14 +489,47 @@ class TestDocxOutput(unittest.TestCase):
             indented[0].paragraph_format.first_line_indent.inches, 0.0, places=2
         )
 
-    def test_footer_carries_the_jdf_identifier(self):
+    def test_label_and_content_share_one_line(self):
+        # The sample sets "Word Limits:" bold on the 0.5" stop with its content
+        # tabbed to 1.0", rather than stacking them on separate lines.
+        paragraphs = self._paragraphs()
+        labeled = [
+            p for p in paragraphs if p.text.startswith("Word Limits:")
+        ]
+        self.assertEqual(len(labeled), 1)
+        paragraph = labeled[0]
+        self.assertIn("\t", paragraph.text)
+        self.assertAlmostEqual(
+            paragraph.paragraph_format.left_indent.inches, 0.5, places=2
+        )
+        self.assertAlmostEqual(
+            paragraph.paragraph_format.first_line_indent.inches, 0.0, places=2
+        )
+        # The label run is bold; the content run is not.
+        self.assertTrue(paragraph.runs[0].bold)
+        self.assertTrue(paragraph.runs[0].text.startswith("Word Limits:"))
+        self.assertFalse(any(r.bold for r in paragraph.runs[1:]))
+        # A tab stop sits at the 1.0" column, so wrapped lines align under it.
+        stops = [ts.position.inches for ts in paragraph.paragraph_format.tab_stops]
+        self.assertIn(1.0, [round(s, 2) for s in stops])
+
+    def test_standalone_label_is_not_bold_without_content(self):
+        # "Standard of Review" has no trailing colon and stays a sub-heading.
+        paragraphs = self._paragraphs()
+        subs = [p for p in paragraphs if p.text.strip() == "Standard of Review"]
+        self.assertEqual(len(subs), 1)
+        self.assertFalse(any(r.bold for r in subs[0].runs))
+
+    def test_footer_defaults_to_a_bare_page_number(self):
         import docx
 
         footer = docx.Document(str(self.docx)).sections[0].footer
         text = "\n".join(p.text for p in footer.paragraphs)
-        self.assertIn("JDF 1987", text)
-        self.assertIn("Sample Opening Brief", text)
-        self.assertIn("R: July 12, 2021", text)
+        # The JDF sample's own footer text belongs to the court's sample form,
+        # so it must not be reproduced on a real brief.
+        self.assertNotIn("JDF 1987", text)
+        self.assertNotIn("Sample Opening Brief", text)
+        self.assertNotIn("R: July 12, 2021", text)
         # "Page " is literal; the number itself is a live PAGE field.
         self.assertTrue(text.rstrip().endswith("Page"))
         with zipfile.ZipFile(self.docx) as archive:
@@ -499,6 +538,44 @@ class TestDocxOutput(unittest.TestCase):
             ]
             blob = "".join(archive.read(name).decode() for name in footers)
             self.assertIn("PAGE", blob)
+
+    def test_footer_text_can_be_supplied(self):
+        import docx
+
+        out = self.tmp / "custom-footer.docx"
+        build_brief(
+            BRIEF, out,
+            footer_left="Cooper v. Ingo, 2026CA1239",
+            footer_center="Opening Brief",
+            footer_right="Page {page}",
+        )
+        text = "\n".join(
+            p.text for p in docx.Document(str(out)).sections[0].footer.paragraphs
+        )
+        self.assertIn("Cooper v. Ingo, 2026CA1239", text)
+        self.assertIn("Opening Brief", text)
+        self.assertTrue(text.rstrip().endswith("Page"))
+        with zipfile.ZipFile(out) as archive:
+            blob = "".join(
+                archive.read(n).decode()
+                for n in archive.namelist()
+                if n.startswith("word/footer")
+            )
+            self.assertIn("PAGE", blob)
+
+    def test_page_numbers_can_be_omitted(self):
+        import docx
+
+        out = self.tmp / "no-page-numbers.docx"
+        build_brief(BRIEF, out, footer_page_number=False,
+                    footer_right="Page {page}")
+        with zipfile.ZipFile(out) as archive:
+            footers = [
+                name for name in archive.namelist() if name.startswith("word/footer")
+            ]
+            if footers:
+                blob = "".join(archive.read(n).decode() for n in footers)
+                self.assertNotIn("PAGE", blob)
 
 
 if __name__ == "__main__":

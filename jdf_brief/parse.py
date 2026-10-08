@@ -517,7 +517,16 @@ def parse(text: str, *, skip_caption: bool = True, skip_toc: bool = True,
 
         if _is_sub_label(line):
             flush()
-            blocks.append(Block(SUB, line.rstrip(":").strip()))
+            stripped_label = line.rstrip()
+            if stripped_label.endswith(":"):
+                # "Standard of Review:", "Preservation:", "Word Limits:" — a
+                # lead-in label whose content follows, which the builder sets
+                # bold on the 0.5" stop with the content tabbed to 1.0".  The
+                # colon is kept so it stays distinguishable from the bare
+                # heading form ("Standard of Review").
+                blocks.append(Block(BODY, stripped_label))
+            else:
+                blocks.append(Block(SUB, stripped_label))
             continue
 
         m = _LETTERED.match(line)

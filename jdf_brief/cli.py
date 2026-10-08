@@ -37,6 +37,24 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true",
         help="print the detected block structure without writing a file",
     )
+    parser.add_argument(
+        "--footer-left", default=None, metavar="TEXT",
+        help="left footer cell (default: empty — the sample's own footer text "
+             "belongs to the court's sample form, not to your brief)",
+    )
+    parser.add_argument(
+        "--footer-center", default=None, metavar="TEXT",
+        help="centre footer cell (default: empty)",
+    )
+    parser.add_argument(
+        "--footer-right", default=None, metavar="TEXT",
+        help="right footer cell; {page} becomes a live page number "
+             "(default: 'Page {page}')",
+    )
+    parser.add_argument(
+        "--no-page-numbers", action="store_true",
+        help="omit the page number from the footer",
+    )
     args = parser.parse_args(argv)
 
     if not args.input.is_file():
@@ -72,6 +90,10 @@ def main(argv: list[str] | None = None) -> int:
         skip_caption=not args.include_caption,
         skip_toc=not args.include_toc,
         collapse_duplicates=not args.keep_duplicates,
+        footer_left=args.footer_left,
+        footer_center=args.footer_center,
+        footer_right=args.footer_right,
+        footer_page_number=not args.no_page_numbers,
     )
     print("wrote %s" % path)
     return 0

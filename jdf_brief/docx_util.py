@@ -72,6 +72,10 @@ FOOTER_LEFT = "JDF 1987  \u2013  Sample Opening Brief"
 FOOTER_CENTER = "R: July 12, 2021"
 FOOTER_PAGE_LABEL = "Page "
 
+# The JDF sample sets a bold lead-in label on the 0.5" stop with its content
+# tabbed to the 1.0" stop, wrapping back to 1.0" (a 0.5" hanging indent).
+LABEL_BOLD = True
+
 # Footnote ids are 1-based; 0 and 1 are reserved for the separator entries.
 _FOOTNOTE_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
 _CONTENT_TYPE_FOOTNOTES = (
@@ -220,20 +224,49 @@ def suppress_auto_hyphenation(paragraph) -> None:
 # Footer
 # ---------------------------------------------------------------------------
 
-def build_footer(section, text_width=Inches(6.5)) -> None:
-    """Three-cell footer: document id | revision | page number."""
+# The sample's footer ("JDF 1987 - Sample Opening Brief" / "R: July 12, 2021")
+# is boilerplate from the court's *sample* form, not part of a real brief, so
+# it is not reproduced.  A filing normally carries only a page number; pass
+# text to build_footer to add a document identifier of your own.
+DEFAULT_FOOTER_LEFT = ""
+DEFAULT_FOOTER_CENTER = ""
+DEFAULT_FOOTER_RIGHT = "Page {page}"
+PAGE_TOKEN = "{page}"
+
+
+def build_footer(section, *, left: str = DEFAULT_FOOTER_LEFT,
+                 center: str = DEFAULT_FOOTER_CENTER,
+                 right: str = DEFAULT_FOOTER_RIGHT,
+                 page_number: bool = True,
+                 text_width=Inches(6.5)) -> None:
+    """Build the footer from three cells: left, centre, right.
+
+    ``{page}`` inside *right* is replaced by a live Word ``PAGE`` field.  With
+    no left or centre text and *page_number* true, this is just a page number
+    in the right margin.
+    """
     footer = section.footer
     footer.is_linked_to_previous = False
     paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
     paragraph.text = ""
 
+    if not (left or center or right or page_number):
+        return
+
     half = int(text_width / 2)
     add_tab_stop(paragraph, half, "center")
     add_tab_stop(paragraph, text_width, "right")
 
-    run = paragraph.add_run(FOOTER_LEFT + "\t" + FOOTER_CENTER + "\t" + FOOTER_PAGE_LABEL)
+    right_text = right if page_number else right.replace(PAGE_TOKEN, "")
+    before, sep, after = right_text.partition(PAGE_TOKEN)
+
+    run = paragraph.add_run(left + "\t" + center + "\t" + before)
     set_run_font(run, size=FOOTER_PT)
-    _add_field(paragraph, "PAGE")
+    if sep:
+        _add_field(paragraph, "PAGE")
+    if after:
+        tail = paragraph.add_run(after)
+        set_run_font(tail, size=FOOTER_PT)
     set_spacing(paragraph, before=0, after=0, line=1.0)
 
 

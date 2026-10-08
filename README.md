@@ -64,6 +64,10 @@ Then:
 | `--include-caption` | keep the caption block instead of starting at section 1 |
 | `--include-toc` | keep the Table of Contents / Table of Authorities blocks |
 | `--keep-duplicates` | keep a paragraph that repeats the one before it |
+| `--footer-left TEXT` | left footer cell (default empty) |
+| `--footer-center TEXT` | centre footer cell (default empty) |
+| `--footer-right TEXT` | right footer cell; `{page}` is the page number (default `Page {page}`) |
+| `--no-page-numbers` | omit the page number |
 | `--dry-run` | print the detected structure and stop |
 
 ---
@@ -81,18 +85,39 @@ rather than size. Footnotes and the footer are 12pt.
 | Margins | 1.5" top, 1" left/right/bottom, US Letter |
 | Major headings (`1. Certificate of Compliance`) | 14pt **bold**; number on the left margin, text tabbed to 0.5" |
 | Issue headings (`ISSUE 1: ...`) | 14pt regular, centred, 0.5" indent |
-| Sub-headings (`A. Jurisdiction`, `Standard of Review`) | letter on the 0.5" stop, text hanging at 1.0" |
+| Sub-headings (`A. Jurisdiction`) | letter on the 0.5" stop, text hanging at 1.0" |
+| Lead-in labels (`Word Limits:`, `Standard of Review:`, `Preservation:`) | **bold** on the 0.5" stop, content tabbed to 1.0" on the same line, wrapping back to 1.0" |
 | Body paragraph | 0.5" first-line indent, 0" continuation |
 | Block quote / indented legal paragraph | 0.5" left indent, **no** first-line indent |
 | Footnotes | 12pt, auto-numbered, real Word footnotes |
 | Case names and reporter citations | *italicised automatically* |
-| Footer (every page) | `JDF 1987 – Sample Opening Brief` ‖ `R: July 12, 2021` ‖ `Page N` (live field) |
+| Footer | `Page N` in the right margin (live field) |
 
 Sections are renumbered sequentially from the order they appear, so a stray
 `3.` before a table of authorities cannot leak into the finished brief.
 
-Two deliberate departures from the sample, both to survive the trip through
-Google Docs:
+### The footer
+
+**The JDF sample's own footer is deliberately not reproduced.** The sample form
+carries `JDF 1987 – Sample Opening Brief` on the left and `R: July 12, 2021` in
+the centre; that is the court's sample document identifier and revision date,
+not part of your brief. A filing normally carries nothing there.
+
+By default the footer is a bare `Page N`. To add your own caption line:
+
+```sh
+python -m jdf_brief.cli brief.txt \
+    --footer-left "Cooper v. Ingo, 2026CA1239" \
+    --footer-center "Appellant's Opening Brief"
+```
+
+`{page}` anywhere in `--footer-right` becomes the live page number
+(`--footer-right "Page {page} of {page}"` style text is up to you). Use
+`--no-page-numbers` to drop the number entirely.
+
+### Two deliberate departures from the sample
+
+Both exist to survive the trip through Google Docs:
 
 * **Exact 36.75pt leading** instead of a "double" multiple. A DOCX "double"
   (`lineRule="auto"`, `w:line="480"`) is multiplied against the font's full
