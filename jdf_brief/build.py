@@ -60,6 +60,10 @@ _LIST_LEFT = 0.75
 # from the page edge, as OOXML specifies: 1" margin + 1" hanging.
 _LABEL_LEFT = 2.0
 
+# A label on its own line ("Standard of Review:") sits at x=108, which is an
+# indent of 0.5" once the 1" margin is added.
+_STANDALONE_LABEL_LEFT = 0.5
+
 # The sample's body text begins 1.5" from the top of the page on every page,
 # not 1" (its first body baseline sits at y=107.5-108.1 on a 792pt page).
 _TOP_MARGIN = 1.5
@@ -141,42 +145,68 @@ def _is_label_only(text: str) -> bool:
 
 
 def _join_label_pairs(blocks: list) -> list[tuple[str, object, object]]:
-    """Flatten body text into paragraphs, pairing labels with their content.
+    """Flatten body text, pairing a label with content on the *same* source line.
 
-    A lead-in label is often not its own block: the source runs
-    "... Including: Word Limits: My brief has ..." onto one line, and
-    :func:`_split_label` separates them.  Splitting therefore happens here,
-    before pairing, so a bare "Word Limits:" is matched with the paragraph
-    that follows it and the two render on one line.
+    Whether a lead-in label shares its line with the content is decided by the
+    source, not by us:
+
+    * ``Word Limits:         My brief has 4,046 words ...`` -- label and content
+      on one source line, so they render inline: label at x=108, content
+      tabbed to the x=216 column, wrapped lines returning to 216.
+    * ``Standard of Review:`` on its own source line -- the label stays on its
+      own line at x=108 and the following paragraph renders as ordinary body
+      text (first line x=144, wrapped x=108).
+
+    Pairing is therefore done between chunks produced from the *same* block.
+    A label that is its own block keeps its own line.
 
     Yields ``(kind, first, second)``; ``second`` is None unless the first is a
-    label that owns the following paragraph.
+    label whose content shared its source line.
     """
-    flat: list = []
-    for block in blocks:
-        if block.kind == BODY and not block.letter:
-            for chunk in _split_label(block.text):
-                flat.append(Block(BODY, chunk, footnotes=block.footnotes))
-        else:
-            flat.append(block)
-
     out: list[tuple[str, object, object]] = []
-    index = 0
-    while index < len(flat):
-        block = flat[index]
-        nxt = flat[index + 1] if index + 1 < len(flat) else None
-        if (
-            block.kind == BODY
-            and nxt is not None
-            and nxt.kind == BODY
-            and _is_label_only(block.text)
-        ):
-            out.append(("labeled", block, nxt))
-            index += 2
+
+    for block in blocks:
+        if block.kind != BODY or block.letter:
+            out.append((block.kind, block, None))
             continue
-        out.append((block.kind, block, None))
-        index += 1
+
+        chunks = _split_label(block.text)
+        index = 0
+        while index < len(chunks):
+            chunk = chunks[index]
+            following = chunks[index + 1] if index + 1 < len(chunks) else None
+            if following is not None and _is_label_only(chunk):
+                # Same source line: label and content share one rendered line.
+                out.append((
+                    "labeled",
+                    Block(BODY, chunk, footnotes=block.footnotes),
+                    Block(BODY, following, footnotes=block.footnotes),
+                ))
+                index += 2
+                continue
+            out.append(("standalone-label" if _is_label_only(chunk) else BODY,
+                        Block(BODY, chunk, footnotes=block.footnotes), None))
+            index += 1
+
     return out
+
+
+def _add_standalone_label(doc, label: str):
+    """A bold lead-in label on its own line.
+
+    The sample sets "Standard of Review:" and "Preservation:" bold at x=108
+    with the content following as an ordinary body paragraph, because in the
+    source the label sat on its own line.
+    """
+    du = _docx_util()
+    paragraph = doc.add_paragraph()
+    du.set_line_height(paragraph, du.BODY_LINE_PT)
+    # left = 0.5" renders at x=108 (OOXML adds the 1" margin).
+    du.set_indent(paragraph, left=_inch(_STANDALONE_LABEL_LEFT), first=_inch(0))
+    label_run = paragraph.add_run(label)
+    du.set_run_font(label_run, size=du.BODY_PT, bold=du.LABEL_BOLD)
+    du.keep_with_next(paragraph)
+    return paragraph
 
 
 def _add_placeholder_heading(doc, title: str, number: int):
@@ -572,6 +602,8 @@ def build_brief(text: str, output: str | Path, *,
             _add_labeled_body(
                 document, block.text, partner.text, notes, partner.footnotes
             )
+        elif kind == "standalone-label":
+            _add_standalone_label(document, block.text)
         elif kind == MAJOR:
             if major_to_insert == 2:
                 # The TOC/TOA slots go at the end of the first section, after

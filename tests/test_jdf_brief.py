@@ -611,6 +611,23 @@ class TestDocxOutput(unittest.TestCase):
         stops = [round(ts.position.inches, 2) for ts in paragraph.paragraph_format.tab_stops]
         self.assertIn(2.0, stops)
 
+    def test_label_on_its_own_source_line_stays_on_its_own_line(self):
+        # The sample renders "Standard of Review:" on its own line (content
+        # follows as body text) because in the source the label was alone,
+        # while "Word Limits:" shares a line with its content.  The choice is
+        # the source's, not ours.
+        from jdf_brief.build import _join_label_pairs
+        from jdf_brief.parse import BODY, Block
+
+        blocks = [
+            Block(BODY, "Word Limits:\tMy brief has 4,046 words."),
+            Block(BODY, "Standard of Review:"),
+            Block(BODY, "Reviewed de novo."),
+        ]
+        kinds = [kind for kind, _a, _b in _join_label_pairs(blocks)]
+        self.assertEqual(kinds[0], "labeled")
+        self.assertIn("standalone-label", kinds)
+
     def test_standalone_label_is_not_bold_without_content(self):
         # "Standard of Review" has no trailing colon and stays a sub-heading.
         paragraphs = self._paragraphs()
