@@ -568,10 +568,10 @@ class TestDocxOutput(unittest.TestCase):
         )
 
     def test_numbered_list_item_is_a_hanging_indent(self):
-        # "1. Whether the district court erred..." — measured from the sample,
-        # the item's first line sits 0.5" in from the margin (level with the
-        # body's first-line indent) and wrapped lines step in a further 0.25",
-        # so the body never falls back under the number.
+        # Measured from the sample: an item's first line sits at x=108 and its
+        # wrapped lines at x=126, so the body never falls back under the
+        # number.  OOXML adds the 1" left margin, so left=0.75" renders at 126
+        # and first_line=-0.25" puts the number at 108.
         paragraphs = self._paragraphs()
         items = [
             p for p in paragraphs
@@ -586,8 +586,10 @@ class TestDocxOutput(unittest.TestCase):
             self.assertIn(0.75, stops)
 
     def test_label_and_content_share_one_line(self):
-        # The sample sets "Word Limits:" bold on the 0.5" stop with its content
-        # tabbed to 1.0", rather than stacking them on separate lines.
+        # The sample sets "Word Limits:" bold at x=108 with its content on the
+        # x=216 column, and a wrapped line returns to x=216 rather than falling
+        # back under the label.  OOXML adds the 1" left margin, so left=2.0"
+        # renders at 216 and first_line=-1.5" puts the label at 108.
         paragraphs = self._paragraphs()
         labeled = [
             p for p in paragraphs if p.text.startswith("Word Limits:")
@@ -596,18 +598,18 @@ class TestDocxOutput(unittest.TestCase):
         paragraph = labeled[0]
         self.assertIn("\t", paragraph.text)
         self.assertAlmostEqual(
-            paragraph.paragraph_format.left_indent.inches, 0.5, places=2
+            paragraph.paragraph_format.left_indent.inches, 2.0, places=2
         )
         self.assertAlmostEqual(
-            paragraph.paragraph_format.first_line_indent.inches, 0.0, places=2
+            paragraph.paragraph_format.first_line_indent.inches, -1.5, places=2
         )
         # The label run is bold; the content run is not.
         self.assertTrue(paragraph.runs[0].bold)
         self.assertTrue(paragraph.runs[0].text.startswith("Word Limits:"))
         self.assertFalse(any(r.bold for r in paragraph.runs[1:]))
-        # A tab stop sits at the 1.0" column, so wrapped lines align under it.
-        stops = [ts.position.inches for ts in paragraph.paragraph_format.tab_stops]
-        self.assertIn(1.0, [round(s, 2) for s in stops])
+        # The tab stop sits at the content column that wrapped lines use.
+        stops = [round(ts.position.inches, 2) for ts in paragraph.paragraph_format.tab_stops]
+        self.assertIn(2.0, stops)
 
     def test_standalone_label_is_not_bold_without_content(self):
         # "Standard of Review" has no trailing colon and stays a sub-heading.

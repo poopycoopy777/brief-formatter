@@ -45,11 +45,20 @@ _SUB_LEFT = 0.5
 _SUB_TEXT = 1.0
 _MAJOR_TAB = 0.5
 _ISSUE_LEFT = 0.5
-# Numbered list items sit half an inch in from the left margin (level with
-# the body's first-line indent) and their wrapped lines step in a further
-# quarter inch: sample x=108 -> x=126.
+# The left margin.  OOXML paragraph indents are measured from the page edge
+# and the 1" margin is added for display, so an indent of 1.0" puts text at the
+# margin (x=72) and 0.75" puts it at x=126.
+_MARGIN_IN = 1.0
+
+# Numbered list items start at x=108 (0.5" in from the margin, level with the
+# body's first-line indent) and their wrapped lines step in to x=126.
 _LIST_BASE = 0.5
-_LIST_WRAP = 0.25
+_LIST_LEFT = 0.75
+
+# A lead-in label ("Word Limits:") sits at 0.5" from the margin (x=108); its
+# content column is at 1.5" (x=216) and wrapped lines return there.  Expressed
+# from the page edge, as OOXML specifies: 1" margin + 1" hanging.
+_LABEL_LEFT = 2.0
 
 # The sample's body text begins 1.5" from the top of the page on every page,
 # not 1" (its first body baseline sits at y=107.5-108.1 on a 792pt page).
@@ -82,20 +91,34 @@ def _emit_chunks(adder, chunks: list[str], footnotes: list[str]) -> None:
 
 
 def _add_labeled_body(doc, label: str, text: str, notes, footnotes: list[str]):
-    """A "Word Limits:" style paragraph: bold label, content on the 1.0" stop.
+    """A "Word Limits:" style paragraph: bold label, content on its own column.
 
-    Matches the sample, which sets the label bold at 0.5" and tabs the content
-    to 1.0", wrapping back to 1.0" (a 0.5" hanging indent).
+    Measured from the sample: the bold label sits at x=108 (0.5" from the left
+    margin) and the content begins at x=216 (1.5" from the margin).  A wrapped
+    line returns to x=216 -- the content column -- and never falls back under
+    the label:
+
+        Word Limits:      My brief has 4,046 words, which is not more than the
+                          9,500 word limit.
+
+    The indent matches how the renderer applies it: left = tab = 2.0" puts the
+    wrapped lines on the x=216 content column and first_line = -1.5" pulls the
+    label back to x=108.  OOXML adds the 1" left margin, so 2.0" renders at
+    216 rather than 144.
     """
     du = _docx_util()
     from docx.enum.text import WD_TAB_ALIGNMENT
 
     paragraph = doc.add_paragraph()
     du.set_line_height(paragraph, du.BODY_LINE_PT)
-    du.set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
+    du.set_indent(
+        paragraph,
+        left=_inch(_LABEL_LEFT),
+        first=_inch(_SUB_LEFT - _LABEL_LEFT),
+    )
     du.keep_lines_together(paragraph)
     paragraph.paragraph_format.tab_stops.add_tab_stop(
-        _inch(_SUB_TEXT), WD_TAB_ALIGNMENT.LEFT
+        _inch(_LABEL_LEFT), WD_TAB_ALIGNMENT.LEFT
     )
 
     label_run = paragraph.add_run(label + "\t")
@@ -272,14 +295,15 @@ def _add_list_item(doc, text: str):
     """
     paragraph = doc.add_paragraph()
     _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
-    # The number and the item's first line sit at _LIST_BASE from the margin;
-    # wrapped lines sit at _LIST_BASE + _LIST_WRAP.
+    # left = tab = 0.75" renders the number at x=108 and wrapped lines at
+    # x=126; first_line = -0.25" is the hanging amount.  (OOXML adds the 1"
+    # left margin to these values, which is why 0.75" lands on 126, not 54.)
     _docx_util().set_indent(
         paragraph,
-        left=_inch(_LIST_BASE + _LIST_WRAP),
-        first=_inch(-_LIST_WRAP),
+        left=_inch(_LIST_LEFT),
+        first=_inch(_LIST_BASE - _LIST_LEFT),
     )
-    _docx_util().add_tab_stop(paragraph, _inch(_LIST_BASE + _LIST_WRAP), "left")
+    _docx_util().add_tab_stop(paragraph, _inch(_LIST_LEFT), "left")
     _docx_util().add_runs(paragraph, italic_segments(text))
     return paragraph
 
