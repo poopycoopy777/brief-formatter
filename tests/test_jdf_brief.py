@@ -421,6 +421,8 @@ The selection of the governing framework is reviewed de novo.
 A. Jurisdiction
 The district court entered judgment on May 22, 2026. CF, p 123. The court relied on Ion Media Networks, Inc. v. West, 2025 COA 66, P 36.
 
+A. The Integrity Act commands release of unedited audio, and the 2021 amendment removed the redaction option the court restored.
+
 :: This indented paragraph should sit at a half inch with no first-line indent.
 
 4. CONCLUSION
@@ -626,6 +628,36 @@ class TestDocxOutput(unittest.TestCase):
         kinds = [kind for kind, _a, _b in _join_label_pairs(blocks)]
         self.assertEqual(kinds[0], "labeled")
         self.assertIn("standalone-label", kinds)
+
+    def test_lettered_subheading_is_underlined(self):
+        # "A. Jurisdiction" is a sub-heading: letter and title both underlined.
+        paragraphs = self._paragraphs()
+        subs = [p for p in paragraphs if p.text.strip() == "A.\tJurisdiction"]
+        self.assertEqual(len(subs), 1)
+        for run in subs[0].runs:
+            if run.text.strip():
+                self.assertTrue(run.font.underline, run.text)
+
+    def test_lettered_body_paragraph_underlines_only_the_letter(self):
+        # "A. The Integrity Act commands release ..." is body copy with an
+        # outline letter; underlining the sentence would be wrong.
+        paragraphs = self._paragraphs()
+        items = [
+            p for p in paragraphs
+            if p.text.strip().startswith("A.\tThe Integrity Act")
+        ]
+        self.assertEqual(len(items), 1)
+        letter_run, body_run = items[0].runs[0], items[0].runs[1]
+        self.assertTrue(letter_run.font.underline)
+        self.assertFalse(body_run.font.underline)
+
+    def test_unlettered_subheading_is_not_underlined(self):
+        paragraphs = self._paragraphs()
+        subs = [p for p in paragraphs if p.text.strip() == "Standard of Review"]
+        self.assertEqual(len(subs), 1)
+        for run in subs[0].runs:
+            if run.text.strip():
+                self.assertFalse(run.font.underline, run.text)
 
     def test_standalone_label_is_not_bold_without_content(self):
         # "Standard of Review" has no trailing colon and stays a sub-heading.

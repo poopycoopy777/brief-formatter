@@ -70,6 +70,12 @@ _LABEL_FIRST = -1.5
 # indent of 0.5" once the 1" margin is added.
 _STANDALONE_LABEL_LEFT = 0.5
 
+# Lettered items at or under this many characters are sub-headings and are
+# underlined whole; longer ones are body paragraphs with an outline letter, so
+# only the letter is underlined.  Every sub-heading in the draft is <=33 chars
+# and every lettered body paragraph is >=57.
+_SUBSCRIPT_MAX_CHARS = 40
+
 # The sample's first line sits at y=107.5 (1.49") on every page.  With an exact
 # line height the renderer places that line about 18pt below the top margin, so
 # the margin is 1.25" and headings carry no space-before; together they land the
@@ -293,38 +299,64 @@ def _add_issue_heading(doc, text: str):
 
 
 def _add_sub_heading(doc, text: str, letter: str = ""):
+    """A lettered sub-heading such as "A. Jurisdiction".
+
+    The letter and its title are underlined when the heading is a lettered one
+    (the outline markers A, B, C ...); an unlettered sub-heading such as
+    "Standard of Review" is left plain.
+    """
+    du = _docx_util()
     paragraph = doc.add_paragraph()
-    _docx_util().set_spacing(paragraph, before=0, after=0)
-    _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
-    _docx_util().set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
+    du.set_spacing(paragraph, before=0, after=0)
+    du.set_line_height(paragraph, du.BODY_LINE_PT)
+    du.set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
     if letter:
         # Letter on the 0.5" stop, text on the 1.0" stop: a 0.5" hanging
-        # indent, so the label aligns with the body's first line.
-        _docx_util().add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
-        label = f"{letter}\t{text}"
+        # indent, so the label aligns with the body's first line.  Separate
+        # runs, so the underline covers the letter and its title.
+        du.add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
+        du.add_runs(paragraph, [(f"{letter}\t", False)], underline=True)
+        du.add_runs(paragraph, [(text, False)], underline=True)
     else:
-        label = text
-    _docx_util().add_runs(paragraph, [(label, False)])
-    _docx_util().keep_with_next(paragraph)
+        du.add_runs(paragraph, [(text, False)])
+    du.keep_with_next(paragraph)
     return paragraph
 
 
 def _add_lettered_body(doc, letter: str, text: str):
-    """A lettered paragraph: letter on the 0.5" stop, text hanging at 1.0"."""
+    """A lettered paragraph: letter on the 0.5" stop, text hanging at 1.0".
+
+    These come in two shapes, and they are underlined differently:
+
+    * **A sub-heading** -- "A. Jurisdiction", "B. Proceedings Below".  The
+      letter and title are underlined, matching the request that lettered
+      sub-headings carry an underline.
+    * **A lettered paragraph** -- "A. The Integrity Act commands release of
+      unedited audio, ...".  Here the letter is only an outline marker and the
+      rest is body copy, so only the letter is underlined; underlining a whole
+      sentence of argument would be wrong.
+
+    The two are told apart by length: every genuine sub-heading in the draft is
+    under 40 characters, and every lettered body paragraph is over 55.
+    """
     chunks = _split_label(text)
+    heading = len(text.strip()) <= _SUBSCRIPT_MAX_CHARS
     paragraphs = []
     for index, chunk in enumerate(chunks):
         paragraph = doc.add_paragraph()
         _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
+        _docx_util().set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
+        _docx_util().add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
         if index == 0:
-            _docx_util().set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
-            _docx_util().add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
-            _docx_util().add_runs(paragraph, [(f"{letter}\t", False)])
+            # The letter and its tab always carry the underline.
+            _docx_util().add_runs(
+                paragraph, [(f"{letter}\t", False)], underline=True
+            )
         else:
-            _docx_util().set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
-            _docx_util().add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
-            paragraph.add_run("\t")
-        _docx_util().add_runs(paragraph, italic_segments(chunk))
+            _docx_util().add_runs(paragraph, [("\t", False)], underline=True)
+        _docx_util().add_runs(
+            paragraph, italic_segments(chunk), underline=heading
+        )
         paragraphs.append(paragraph)
     return paragraphs
 

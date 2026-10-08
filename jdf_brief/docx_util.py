@@ -117,13 +117,28 @@ def _esc(value: str) -> str:
 # Runs and paragraphs
 # ---------------------------------------------------------------------------
 
-def set_run_font(run, size=BODY_PT, bold=False, italic=False, name=FONT) -> None:
+def set_run_font(run, size=BODY_PT, bold=False, italic=False, name=FONT,
+                 underline=False) -> None:
     """Apply explicit run properties Word and Google Docs both honour."""
     run.font.name = name
     run.font.size = size
     run.font.bold = bold
     run.font.italic = italic
+    # python-docx inserts w:u in its schema-correct position; appending it by
+    # hand puts it after w:sz, which the renderer then ignores.
+    run.font.underline = bool(underline)
     rpr = run._element.get_or_add_rPr()
+    if not underline:
+        # False writes nothing, so a run following an underlined one -- the
+        # title after the letter of a lettered heading -- would inherit the
+        # underline.  Force an explicit "none".
+        existing = rpr.find(qn("w:u"))
+        if existing is not None:
+            rpr.remove(existing)
+        run.font.underline = None
+        u = OxmlElement("w:u")
+        u.set(qn("w:val"), "none")
+        rpr.append(u)
     rfonts = rpr.find(qn("w:rFonts"))
     if rfonts is None:
         rfonts = OxmlElement("w:rFonts")
@@ -132,13 +147,15 @@ def set_run_font(run, size=BODY_PT, bold=False, italic=False, name=FONT) -> None
         rfonts.set(qn(attr), name)
 
 
-def add_runs(paragraph, segments, size=BODY_PT, bold=False) -> None:
+def add_runs(paragraph, segments, size=BODY_PT, bold=False,
+             underline=False) -> None:
     """Add ``(text, italic)`` segments as runs."""
     for text, italic in segments:
         if not text:
             continue
         run = paragraph.add_run(text)
-        set_run_font(run, size=size, bold=bold, italic=italic)
+        set_run_font(run, size=size, bold=bold, italic=italic,
+                     underline=underline)
 
 
 def set_line_height(paragraph, points: float) -> None:
