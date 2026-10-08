@@ -39,6 +39,10 @@ def _inch(value: float):
 
 
 # Numeric inch values, safe to use as import-time default arguments.
+# Body text: wrapped lines at x=108, opening line at x=144.  A rendered column
+# is 72 + left*72 and the opening line lands at wrapped + first, so left = 0.5"
+# and first = 0.5".
+_BODY_LEFT = 0.5
 _BODY_FIRST_LINE = 0.5
 _QUOTE_LEFT = 0.5
 _SUB_LEFT = 0.5
@@ -55,18 +59,22 @@ _MARGIN_IN = 1.0
 _LIST_BASE = 0.5
 _LIST_LEFT = 0.75
 
-# A lead-in label ("Word Limits:") sits at 0.5" from the margin (x=108); its
-# content column is at 1.5" (x=216) and wrapped lines return there.  Expressed
-# from the page edge, as OOXML specifies: 1" margin + 1" hanging.
+# A lead-in label ("Word Limits:") sits at x=108 and its content column is at
+# x=216, where wrapped lines return.  A rendered column is 72 + left*72 and the
+# opening line lands at wrapped + first, so left = 2.0" gives 216 and
+# first = -1.5" brings the label back to 108.
 _LABEL_LEFT = 2.0
+_LABEL_FIRST = -1.5
 
 # A label on its own line ("Standard of Review:") sits at x=108, which is an
 # indent of 0.5" once the 1" margin is added.
 _STANDALONE_LABEL_LEFT = 0.5
 
-# The sample's body text begins 1.5" from the top of the page on every page,
-# not 1" (its first body baseline sits at y=107.5-108.1 on a 792pt page).
-_TOP_MARGIN = 1.5
+# The sample's first line sits at y=107.5 (1.49") on every page.  With an exact
+# line height the renderer places that line about 18pt below the top margin, so
+# the margin is 1.25" and headings carry no space-before; together they land the
+# first line on 1.49", verified against the rendered page.
+_TOP_MARGIN = 1.25
 
 _ROMAN = (
     "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
@@ -118,7 +126,7 @@ def _add_labeled_body(doc, label: str, text: str, notes, footnotes: list[str]):
     du.set_indent(
         paragraph,
         left=_inch(_LABEL_LEFT),
-        first=_inch(_SUB_LEFT - _LABEL_LEFT),
+        first=_inch(_LABEL_FIRST),
     )
     du.keep_lines_together(paragraph)
     paragraph.paragraph_format.tab_stops.add_tab_stop(
@@ -236,7 +244,15 @@ def _add_body(doc, text: str, notes, footnotes: list[str], *,
     if left is not None:
         du.set_indent(paragraph, left=left, first=_inch(0))
     elif first_line:
-        du.set_indent(paragraph, first=_inch(first_line))
+        # Body text wraps to x=108 and its opening line sits at x=144.
+        # Empirically (see _map.py) a rendered column is 72 + left*72, and the
+        # opening line lands at wrapped + first, so left = 0.5" and
+        # first = 0.5" give 108 and 144.
+        du.set_indent(
+            paragraph,
+            left=_inch(_BODY_LEFT),
+            first=_inch(_BODY_FIRST_LINE),
+        )
     else:
         du.set_indent(paragraph, first=_inch(0))
     segments = italic_segments(text)
@@ -251,7 +267,7 @@ def _add_body(doc, text: str, notes, footnotes: list[str], *,
 
 def _add_major_heading(doc, text: str, number: int):
     paragraph = doc.add_paragraph()
-    _docx_util().set_spacing(paragraph, before=12, after=0)
+    _docx_util().set_spacing(paragraph, before=0, after=0)
     _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
     # No left indent: the number sits on the left margin and the section text
     # is tabbed to 0.5", matching the sample.
@@ -267,7 +283,7 @@ def _add_issue_heading(doc, text: str):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     paragraph = doc.add_paragraph()
-    _docx_util().set_spacing(paragraph, before=12, after=0)
+    _docx_util().set_spacing(paragraph, before=0, after=0)
     _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
     _docx_util().set_indent(paragraph, left=_inch(_ISSUE_LEFT), first=_inch(0))
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER

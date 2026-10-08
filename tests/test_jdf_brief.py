@@ -476,14 +476,13 @@ class TestDocxOutput(unittest.TestCase):
     def test_page_setup_matches_the_sample(self):
         import docx
 
-        from jdf_brief import docx_util as du
-
         section = docx.Document(str(self.docx)).sections[0]
         self.assertAlmostEqual(section.page_width.inches, 8.5, places=2)
         self.assertAlmostEqual(section.page_height.inches, 11.0, places=2)
-        # The sample's body begins 1.5" down, with a 1" frame on the other
-        # three sides.
-        self.assertAlmostEqual(section.top_margin.inches, 1.5, places=2)
+        # 1.25" top: with an exact line height the renderer places the first
+        # line about 18pt below the margin, so the sample's first line
+        # (y=107.5, 1.49") is reproduced by a 1.25" margin and no space-before.
+        self.assertAlmostEqual(section.top_margin.inches, 1.25, places=2)
         for attr in ("left_margin", "right_margin", "bottom_margin"):
             self.assertAlmostEqual(getattr(section, attr).inches, 1.0, places=2)
 
