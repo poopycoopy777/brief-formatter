@@ -46,6 +46,10 @@ _SUB_TEXT = 1.0
 _MAJOR_TAB = 0.5
 _ISSUE_LEFT = 0.5
 
+# The sample's body text begins 1.5" from the top of the page on every page,
+# not 1" (its first body baseline sits at y=107.5-108.1 on a 792pt page).
+_TOP_MARGIN = 1.5
+
 _ROMAN = (
     "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
     "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
@@ -81,7 +85,7 @@ def _add_body(doc, text: str, notes, footnotes: list[str], *,
     """
     du = _docx_util()
     paragraph = doc.add_paragraph()
-    du.set_spacing(paragraph, line=du.BODY_LEADING)
+    du.set_line_height(paragraph, du.BODY_LINE_PT)
     du.keep_lines_together(paragraph)
     if left is not None:
         du.set_indent(paragraph, left=left, first=_inch(0))
@@ -101,7 +105,8 @@ def _add_body(doc, text: str, notes, footnotes: list[str], *,
 
 def _add_major_heading(doc, text: str, number: int):
     paragraph = doc.add_paragraph()
-    _docx_util().set_spacing(paragraph, before=12, after=0, line=_docx_util().BODY_LEADING)
+    _docx_util().set_spacing(paragraph, before=12, after=0)
+    _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
     # No left indent: the number sits on the left margin and the section text
     # is tabbed to 0.5", matching the sample.
     _docx_util().set_indent(paragraph, left=_inch(0), first=_inch(0))
@@ -116,7 +121,8 @@ def _add_issue_heading(doc, text: str):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     paragraph = doc.add_paragraph()
-    _docx_util().set_spacing(paragraph, before=12, after=0, line=_docx_util().BODY_LEADING)
+    _docx_util().set_spacing(paragraph, before=12, after=0)
+    _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
     _docx_util().set_indent(paragraph, left=_inch(_ISSUE_LEFT), first=_inch(0))
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _docx_util().add_runs(paragraph, italic_segments(text), size=_docx_util().HEADING_PT)
@@ -126,7 +132,8 @@ def _add_issue_heading(doc, text: str):
 
 def _add_sub_heading(doc, text: str, letter: str = ""):
     paragraph = doc.add_paragraph()
-    _docx_util().set_spacing(paragraph, before=0, after=0, line=_docx_util().BODY_LEADING)
+    _docx_util().set_spacing(paragraph, before=0, after=0)
+    _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
     _docx_util().set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
     if letter:
         # Letter on the 0.5" stop, text on the 1.0" stop: a 0.5" hanging
@@ -146,7 +153,7 @@ def _add_lettered_body(doc, letter: str, text: str):
     paragraphs = []
     for index, chunk in enumerate(chunks):
         paragraph = doc.add_paragraph()
-        _docx_util().set_spacing(paragraph, line=_docx_util().BODY_LEADING)
+        _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
         if index == 0:
             _docx_util().set_indent(paragraph, left=_inch(_SUB_LEFT), first=_inch(0))
             _docx_util().add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
@@ -162,7 +169,7 @@ def _add_lettered_body(doc, letter: str, text: str):
 
 def _add_list_item(doc, text: str):
     paragraph = doc.add_paragraph()
-    _docx_util().set_spacing(paragraph, line=_docx_util().BODY_LEADING)
+    _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
     _docx_util().set_indent(paragraph, left=_inch(_QUOTE_LEFT), first=_inch(0))
     _docx_util().add_runs(paragraph, italic_segments(text))
     return paragraph
@@ -373,7 +380,10 @@ def build_brief(text: str, output: str | Path, *,
     _configure_styles(document)
 
     section = document.sections[0]
-    for attr in ("left_margin", "right_margin", "top_margin", "bottom_margin"):
+    # The sample's body starts at y=107.5-108.1 on every page, i.e. 1.5" down
+    # (not 1"), while its footer sits just inside a 1" bottom margin.
+    section.top_margin = _inch(_TOP_MARGIN)
+    for attr in ("left_margin", "right_margin", "bottom_margin"):
         setattr(section, attr, _inch(1))
     _docx_util().build_footer(section)
 

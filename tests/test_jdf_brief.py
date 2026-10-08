@@ -8,6 +8,7 @@ Runs on the standard library alone, so either interpreter works:
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 import tempfile
@@ -391,43 +392,80 @@ class TestDocxOutput(unittest.TestCase):
             # One real footnote plus the separator and continuationSeparator.
             self.assertEqual(footnotes.count("<w:footnote "), 3)
 
-    def test_page_setup_is_letter_with_one_inch_margins(self):
+    def test_page_setup_matches_the_sample(self):
         import docx
+
+        from jdf_brief import docx_util as du
 
         section = docx.Document(str(self.docx)).sections[0]
         self.assertAlmostEqual(section.page_width.inches, 8.5, places=2)
         self.assertAlmostEqual(section.page_height.inches, 11.0, places=2)
-        for attr in ("left_margin", "right_margin", "top_margin", "bottom_margin"):
+        # The sample's body begins 1.5" down, with a 1" frame on the other
+        # three sides.
+        self.assertAlmostEqual(section.top_margin.inches, 1.5, places=2)
+        for attr in ("left_margin", "right_margin", "bottom_margin"):
             self.assertAlmostEqual(getattr(section, attr).inches, 1.0, places=2)
 
-    def test_typography_matches_the_jdf_sample(self):
-        from docx.shared import Pt
+    def test_typography_is_garamond_14pt(self):
+        from jdf_brief import docx_util as du
 
         paragraphs = self._paragraphs()
 
         major = paragraphs[0]
         self.assertTrue(major.text.startswith("1.\tCertificate of Compliance"))
         self.assertEqual(major.runs[0].font.name, "Garamond")
-        self.assertEqual(major.runs[0].font.size, Pt(14))
+        self.assertAlmostEqual(
+            major.runs[0].font.size.pt, 14.0, delta=0.05,
+            msg="headings must be the same 14pt as the body",
+        )
         self.assertTrue(major.runs[0].font.bold)
         self.assertAlmostEqual(major.paragraph_format.left_indent.inches, 0.0, places=2)
 
         body = paragraphs[1]
+        self.assertEqual(body.runs[0].font.name, "Garamond")
+        self.assertAlmostEqual(body.runs[0].font.size.pt, 14.0, delta=0.05)
         self.assertAlmostEqual(
             body.paragraph_format.first_line_indent.inches, 0.5, places=2
         )
-        self.assertAlmostEqual(body.paragraph_format.line_spacing, 2.0, places=2)
-        self.assertEqual(body.runs[0].font.size, Pt(12))
+
+    def test_every_run_is_14pt_or_footnote_size(self):
+        # The brief itself is a uniform 14pt; only footnotes and the footer
+        # are smaller.
+        paragraphs = self._paragraphs()
+        sizes = {
+            round(run.font.size.pt, 1)
+            for paragraph in paragraphs
+            for run in paragraph.runs
+            if run.font.size
+        }
+        self.assertEqual(sizes, {14.0})
+
+    def test_body_line_height_is_exact_and_scaled(self):
+        from jdf_brief import docx_util as du
+
+        paragraph = self._paragraphs()[1]
+        # Exact point leading, not a "double" multiple: that is what keeps the
+        # spacing identical in Word, LibreOffice and Google Docs.
+        self.assertEqual(paragraph.paragraph_format.line_spacing_rule.name, "EXACTLY")
+        self.assertAlmostEqual(
+            paragraph.paragraph_format.line_spacing.pt, du.BODY_LINE_PT, places=1
+        )
+        # 2.625x the font size, the ratio measured from the sample.
+        self.assertAlmostEqual(
+            du.BODY_LINE_PT / 14.0, 2.625, places=2
+        )
 
     def test_sections_are_renumbered_sequentially(self):
+        # Headings are 14pt bold and open with "N.\t", which is what
+        # distinguishes them now that they share the body's size.
         paragraphs = self._paragraphs()
-        majors = []
-        for paragraph in paragraphs:
-            if not paragraph.runs:
-                continue
-            run = paragraph.runs[0]
-            if run.font.size and run.font.size.pt == 14 and run.font.bold:
-                majors.append(paragraph.text)
+        majors = [
+            paragraph.text
+            for paragraph in paragraphs
+            if paragraph.runs
+            and paragraph.runs[0].font.bold
+            and re.match(r"^\d+\.\t", paragraph.text)
+        ]
         self.assertTrue(majors[0].startswith("1.\tCertificate of Compliance"))
         self.assertTrue(majors[1].startswith("2.\tSTATEMENT OF THE CASE"))
         self.assertTrue(majors[2].startswith("3.\tCONCLUSION"))
@@ -452,8 +490,15 @@ class TestDocxOutput(unittest.TestCase):
         text = "\n".join(p.text for p in footer.paragraphs)
         self.assertIn("JDF 1987", text)
         self.assertIn("Sample Opening Brief", text)
-        # The page number is a live field, not literal text.
-        self.assertNotIn("Page", text)
+        self.assertIn("R: July 12, 2021", text)
+        # "Page " is literal; the number itself is a live PAGE field.
+        self.assertTrue(text.rstrip().endswith("Page"))
+        with zipfile.ZipFile(self.docx) as archive:
+            footers = [
+                name for name in archive.namelist() if name.startswith("word/footer")
+            ]
+            blob = "".join(archive.read(name).decode() for name in footers)
+            self.assertIn("PAGE", blob)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,17 @@ works with no installation. Building a document needs `python-docx`:
 pip install -r requirements.txt
 ```
 
+## Changing the type size
+
+Everything is driven by one constant in `jdf_brief/docx_util.py`:
+
+```python
+BODY_SIZE_PT = 14.0     # body, headings and all brief text
+```
+
+The line height follows automatically (`BODY_LINE_PT = size x 2.625`). Set it
+to `12.0` to reproduce the sample's original size exactly.
+
 ## Quick start
 
 Run from this folder:
@@ -59,23 +70,37 @@ Then:
 
 ## What it produces
 
-Every measurement below was taken from the sample PDF and is applied exactly.
+The JDF sample is Garamond 12pt body / 14pt headings / 10pt footnotes. **This
+build is set to Garamond 14pt throughout** — every run of the brief itself,
+headings included, is 14pt. Headings are distinguished by weight and centring
+rather than size. Footnotes and the footer are 12pt.
 
 | Element | Format |
 | --- | --- |
-| Font | Garamond 12pt, double-spaced (31.5pt leading) |
-| Margins | 1" all round, US Letter |
+| Font | Garamond **14pt** throughout, exact 36.75pt leading (2.625x the size, the ratio measured from the sample) |
+| Margins | 1.5" top, 1" left/right/bottom, US Letter |
 | Major headings (`1. Certificate of Compliance`) | 14pt **bold**; number on the left margin, text tabbed to 0.5" |
 | Issue headings (`ISSUE 1: ...`) | 14pt regular, centred, 0.5" indent |
 | Sub-headings (`A. Jurisdiction`, `Standard of Review`) | letter on the 0.5" stop, text hanging at 1.0" |
 | Body paragraph | 0.5" first-line indent, 0" continuation |
 | Block quote / indented legal paragraph | 0.5" left indent, **no** first-line indent |
-| Footnotes | 10pt, auto-numbered, real Word footnotes |
+| Footnotes | 12pt, auto-numbered, real Word footnotes |
 | Case names and reporter citations | *italicised automatically* |
-| Footer (every page) | `JDF 1987 – Sample Opening Brief` ‖ `R: July 12, 2021` ‖ live page number |
+| Footer (every page) | `JDF 1987 – Sample Opening Brief` ‖ `R: July 12, 2021` ‖ `Page N` (live field) |
 
 Sections are renumbered sequentially from the order they appear, so a stray
 `3.` before a table of authorities cannot leak into the finished brief.
+
+Two deliberate departures from the sample, both to survive the trip through
+Google Docs:
+
+* **Exact 36.75pt leading** instead of a "double" multiple. A DOCX "double"
+  (`lineRule="auto"`, `w:line="480"`) is multiplied against the font's full
+  line box by Word but only against ascent+descent by LibreOffice and Google
+  Docs' importer, which rendered 27pt instead of 31.5pt — visibly tighter than
+  the sample. An exact height is honoured identically everywhere.
+* **1.5" top margin** rather than 1". The sample begins its body at y=107.5–108
+  on every page, which is 1.5" down, not 1".
 
 ### Paragraphs
 

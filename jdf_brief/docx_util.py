@@ -35,12 +35,32 @@ from docx.shared import Inches, Pt
 # ---------------------------------------------------------------------------
 
 FONT = "Garamond"
-BODY_PT = Pt(12)
-HEADING_PT = Pt(14)
-FOOTNOTE_PT = Pt(10)
-FOOTER_PT = Pt(10.5)
 
-BODY_LEADING = 2.0          # double spaced
+# ---------------------------------------------------------------------------
+# Type scale
+#
+# The JDF sample is Garamond 12pt body / 14pt headings / 10pt footnotes.  The
+# scale is expressed as a ratio so the whole document can be enlarged from one
+# place.  Scaling the body to 14pt keeps every remaining size in the sample's
+# proportions: headings 16pt, footnotes 12pt.
+# ---------------------------------------------------------------------------
+
+BODY_SIZE_PT = 14.0
+BODY_PT = Pt(BODY_SIZE_PT)
+# Headings are the same 14pt as the body and are distinguished by weight and
+# centring instead of size, so the whole brief is one uniform 14pt.
+HEADING_PT = Pt(BODY_SIZE_PT)
+FOOTNOTE_PT = Pt(12)     # sample ratio 10/12 -> 11.7pt, rounded to 12pt
+FOOTER_PT = Pt(12)
+
+# Exact body line height.  The sample measures 31.4-31.7pt between body
+# baselines on every page, which is 12pt Garamond double spaced (2.625x the
+# font size).  The same ratio at 14pt is 36.75pt.  Applied as an exact height
+# so that every renderer agrees (see set_line_height).
+LINE_RATIO = 31.5 / 12.0
+BODY_LINE_PT = round(BODY_SIZE_PT * LINE_RATIO, 2)           # 36.75pt
+
+BODY_LEADING = 2.0          # double spaced (used for footnotes/short lines)
 MAJOR_TAB = Inches(0.5)     # number at the margin, text at 0.5"
 BODY_FIRST_LINE = Inches(0.5)
 SUB_LEFT = Inches(0.5)
@@ -50,6 +70,7 @@ ISSUE_LEFT = Inches(0.5)
 
 FOOTER_LEFT = "JDF 1987  \u2013  Sample Opening Brief"
 FOOTER_CENTER = "R: July 12, 2021"
+FOOTER_PAGE_LABEL = "Page "
 
 # Footnote ids are 1-based; 0 and 1 are reserved for the separator entries.
 _FOOTNOTE_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
@@ -116,7 +137,24 @@ def add_runs(paragraph, segments, size=BODY_PT, bold=False) -> None:
         set_run_font(run, size=size, bold=bold, italic=italic)
 
 
+def set_line_height(paragraph, points: float) -> None:
+    """Set an exact line height in points.
+
+    ``lineRule="auto"`` with ``w:line="480"`` looks like double spacing but is
+    not: Word multiplies the font's full line box (31.5pt for 12pt Garamond),
+    while LibreOffice and Google Docs' DOCX importer multiply only
+    ascent+descent, which yields about 27pt. The brief then renders visibly
+    tighter than the JDF sample. An exact height of 31.5pt is honoured
+    identically by Word, LibreOffice and Google Docs, so the double spacing
+    the sample calls for actually survives.
+    """
+    pf = paragraph.paragraph_format
+    pf.line_spacing = Pt(points)
+    pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+
+
 def set_spacing(paragraph, *, before=0, after=0, line=None, rule="auto") -> None:
+    """Set space before/after, and optionally a multiple line spacing."""
     pf = paragraph.paragraph_format
     pf.space_before = Pt(before)
     pf.space_after = Pt(after)
@@ -154,6 +192,13 @@ def keep_with_next(paragraph) -> None:
     paragraph.paragraph_format.keep_with_next = True
 
 
+def add_space_before(paragraph, points: float) -> None:
+    """Add *points* of space above an already-built paragraph."""
+    current = paragraph.paragraph_format.space_before
+    existing = current.pt if current is not None else 0.0
+    paragraph.paragraph_format.space_before = Pt(existing + points)
+
+
 def keep_lines_together(paragraph) -> None:
     """Widow/orphan control only.
 
@@ -186,7 +231,7 @@ def build_footer(section, text_width=Inches(6.5)) -> None:
     add_tab_stop(paragraph, half, "center")
     add_tab_stop(paragraph, text_width, "right")
 
-    run = paragraph.add_run(FOOTER_LEFT + "\t" + FOOTER_CENTER + "\t")
+    run = paragraph.add_run(FOOTER_LEFT + "\t" + FOOTER_CENTER + "\t" + FOOTER_PAGE_LABEL)
     set_run_font(run, size=FOOTER_PT)
     _add_field(paragraph, "PAGE")
     set_spacing(paragraph, before=0, after=0, line=1.0)
