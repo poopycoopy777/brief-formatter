@@ -45,6 +45,11 @@ _SUB_LEFT = 0.5
 _SUB_TEXT = 1.0
 _MAJOR_TAB = 0.5
 _ISSUE_LEFT = 0.5
+# Numbered list items sit half an inch in from the left margin (level with
+# the body's first-line indent) and their wrapped lines step in a further
+# quarter inch: sample x=108 -> x=126.
+_LIST_BASE = 0.5
+_LIST_WRAP = 0.25
 
 # The sample's body text begins 1.5" from the top of the page on every page,
 # not 1" (its first body baseline sits at y=107.5-108.1 on a 792pt page).
@@ -258,20 +263,23 @@ def _add_lettered_body(doc, letter: str, text: str):
 def _add_list_item(doc, text: str):
     """A numbered list item such as "1. Whether the district court erred...".
 
-    The item is a hanging indent, not a plain left indent: the number sits on
-    the 0.5" stop and every following line -- including the wrapped lines of the
-    item's own text -- aligns on the 1.0" stop.  With a plain 0.5" left indent
-    the wrapped lines fall back under the number, which is what the JDF sample
-    avoids.
+    Measured from the sample: the item starts on the left margin (x=108, the
+    same start as body text) and its wrapped lines step in by only a quarter
+    inch (x=126), so the number hangs a quarter inch into the margin.  The
+    indent is deliberately small -- hanging by a full half inch pushes the
+    first line in level with the body's first-line indent and reads as an
+    over-indent.
     """
     paragraph = doc.add_paragraph()
     _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
+    # The number and the item's first line sit at _LIST_BASE from the margin;
+    # wrapped lines sit at _LIST_BASE + _LIST_WRAP.
     _docx_util().set_indent(
         paragraph,
-        left=_inch(_SUB_TEXT),                    # body column at 1.0"
-        hanging=_inch(_SUB_TEXT - _SUB_LEFT),     # number hangs out at 0.5"
+        left=_inch(_LIST_BASE + _LIST_WRAP),
+        first=_inch(-_LIST_WRAP),
     )
-    _docx_util().add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
+    _docx_util().add_tab_stop(paragraph, _inch(_LIST_BASE + _LIST_WRAP), "left")
     _docx_util().add_runs(paragraph, italic_segments(text))
     return paragraph
 

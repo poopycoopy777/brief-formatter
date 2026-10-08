@@ -568,9 +568,10 @@ class TestDocxOutput(unittest.TestCase):
         )
 
     def test_numbered_list_item_is_a_hanging_indent(self):
-        # "1. Whether the district court erred..." — the number sits on the
-        # 0.5" stop and wrapped lines align on the 1.0" stop, so the body never
-        # falls back under the number.
+        # "1. Whether the district court erred..." — measured from the sample,
+        # the item's first line sits 0.5" in from the margin (level with the
+        # body's first-line indent) and wrapped lines step in a further 0.25",
+        # so the body never falls back under the number.
         paragraphs = self._paragraphs()
         items = [
             p for p in paragraphs
@@ -579,10 +580,10 @@ class TestDocxOutput(unittest.TestCase):
         self.assertTrue(items, "expected numbered issue items in the fixture")
         for paragraph in items:
             pf = paragraph.paragraph_format
-            self.assertAlmostEqual(pf.left_indent.inches, 1.0, places=2)
-            self.assertAlmostEqual(pf.first_line_indent.inches, -0.5, places=2)
+            self.assertAlmostEqual(pf.left_indent.inches, 0.75, places=2)
+            self.assertAlmostEqual(pf.first_line_indent.inches, -0.25, places=2)
             stops = [round(ts.position.inches, 2) for ts in pf.tab_stops]
-            self.assertIn(1.0, stops)
+            self.assertIn(0.75, stops)
 
     def test_label_and_content_share_one_line(self):
         # The sample sets "Word Limits:" bold on the 0.5" stop with its content
