@@ -256,9 +256,22 @@ def _add_lettered_body(doc, letter: str, text: str):
 
 
 def _add_list_item(doc, text: str):
+    """A numbered list item such as "1. Whether the district court erred...".
+
+    The item is a hanging indent, not a plain left indent: the number sits on
+    the 0.5" stop and every following line -- including the wrapped lines of the
+    item's own text -- aligns on the 1.0" stop.  With a plain 0.5" left indent
+    the wrapped lines fall back under the number, which is what the JDF sample
+    avoids.
+    """
     paragraph = doc.add_paragraph()
     _docx_util().set_line_height(paragraph, _docx_util().BODY_LINE_PT)
-    _docx_util().set_indent(paragraph, left=_inch(_QUOTE_LEFT), first=_inch(0))
+    _docx_util().set_indent(
+        paragraph,
+        left=_inch(_SUB_TEXT),                    # body column at 1.0"
+        hanging=_inch(_SUB_TEXT - _SUB_LEFT),     # number hangs out at 0.5"
+    )
+    _docx_util().add_tab_stop(paragraph, _inch(_SUB_TEXT), "left")
     _docx_util().add_runs(paragraph, italic_segments(text))
     return paragraph
 

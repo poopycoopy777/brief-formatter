@@ -413,13 +413,17 @@ My brief has 4,046 words, which is not more than the 9,500 word limit.
 Standard of Review
 The selection of the governing framework is reviewed de novo.
 
-2. STATEMENT OF THE CASE
+2. ISSUES PRESENTED FOR REVIEW
+1. Whether the district court erred as a matter of law by sustaining continued muting of body-worn camera audio under the general discretionary withholding provisions of the CCJRA.
+2. Whether the final order dismissing all four claims under C.R.C.P. 12(b)(5) must be reversed.
+
+3. STATEMENT OF THE CASE
 A. Jurisdiction
 The district court entered judgment on May 22, 2026. CF, p 123. The court relied on Ion Media Networks, Inc. v. West, 2025 COA 66, P 36.
 
 :: This indented paragraph should sit at a half inch with no first-line indent.
 
-3. CONCLUSION
+4. CONCLUSION
 The judgment should be reversed.
 """
 
@@ -544,8 +548,11 @@ class TestDocxOutput(unittest.TestCase):
             and re.match(r"^\d+\.\t", paragraph.text)
         ]
         self.assertTrue(majors[0].startswith("1.\tCertificate of Compliance"))
-        self.assertTrue(majors[1].startswith("2.\tSTATEMENT OF THE CASE"))
-        self.assertTrue(majors[2].startswith("3.\tCONCLUSION"))
+        # Numbers are sequential and start at 1, whatever the fixture holds.
+        numbers = [int(re.match(r"^(\d+)\.\t", text).group(1)) for text in majors]
+        self.assertEqual(numbers, list(range(1, len(majors) + 1)))
+        self.assertIn("STATEMENT OF THE CASE", " ".join(majors))
+        self.assertTrue(majors[-1].endswith("CONCLUSION"))
 
     def test_legal_indent_has_no_first_line(self):
         paragraphs = self._paragraphs()
@@ -559,6 +566,23 @@ class TestDocxOutput(unittest.TestCase):
         self.assertAlmostEqual(
             indented[0].paragraph_format.first_line_indent.inches, 0.0, places=2
         )
+
+    def test_numbered_list_item_is_a_hanging_indent(self):
+        # "1. Whether the district court erred..." — the number sits on the
+        # 0.5" stop and wrapped lines align on the 1.0" stop, so the body never
+        # falls back under the number.
+        paragraphs = self._paragraphs()
+        items = [
+            p for p in paragraphs
+            if p.text.strip().startswith(("1. Whether", "2. Whether"))
+        ]
+        self.assertTrue(items, "expected numbered issue items in the fixture")
+        for paragraph in items:
+            pf = paragraph.paragraph_format
+            self.assertAlmostEqual(pf.left_indent.inches, 1.0, places=2)
+            self.assertAlmostEqual(pf.first_line_indent.inches, -0.5, places=2)
+            stops = [round(ts.position.inches, 2) for ts in pf.tab_stops]
+            self.assertIn(1.0, stops)
 
     def test_label_and_content_share_one_line(self):
         # The sample sets "Word Limits:" bold on the 0.5" stop with its content
