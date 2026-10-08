@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 # ---------------------------------------------------------------------------
 # Block model
@@ -234,6 +235,13 @@ def _split_markers(text: str) -> tuple[str, list[str]]:
 # Caption / TOC skipping
 # ---------------------------------------------------------------------------
 
+# A line that finishes a sentence.  Used to decide whether the next source
+# line continues the same paragraph (hard-wrapped prose) or starts a new one
+# (one paragraph per line).  Closing punctuation includes the right quotes and
+# brackets that commonly trail a final period.
+_ENDS_SENTENCE = re.compile(r"""[.!?]["'\u201d\u2019)\]]*\s*$""")
+
+
 def _skip_caption(lines: list[str]) -> int:
     """Index of the first line after the caption block, or 0 if not found.
 
@@ -338,9 +346,71 @@ class ParseResult:
     blocks: list[Block]
     skipped_caption: bool
     skipped_toc: bool
+    removed_duplicates: int = 0
 
 
-def parse(text: str, *, skip_caption: bool = True, skip_toc: bool = True) -> ParseResult:
+# ---------------------------------------------------------------------------
+# Near-duplicate paragraphs
+# ---------------------------------------------------------------------------
+
+# Editing passes routinely leave two copies of a paragraph that differ only in
+# punctuation (an em-dash version and a hyphen version).  Comparison therefore
+# normalises dashes and all other punctuation away before measuring similarity.
+_DUPE_MIN_CHARS = 160
+_DUPE_MIN_WORDS = 25
+_DUPE_THRESHOLD = 0.90
+
+
+def _normalise_for_compare(text: str) -> str:
+    lowered = text.lower()
+    for dash in ("\u2014", "\u2013", "\u2212"):
+        lowered = lowered.replace(dash, "-")
+    lowered = re.sub(r"[^a-z0-9 ]+", " ", lowered)
+    return re.sub(r"\s+", " ", lowered).strip()
+
+
+def _is_duplicate_pair(first: str, second: str) -> bool:
+    """True when *second* is a near-copy of the paragraph *first*."""
+    if len(first) < _DUPE_MIN_CHARS or len(second) < _DUPE_MIN_CHARS:
+        return False
+    a = _normalise_for_compare(first)
+    b = _normalise_for_compare(second)
+    if len(a.split()) < _DUPE_MIN_WORDS or len(b.split()) < _DUPE_MIN_WORDS:
+        return False
+    if a == b:
+        return True
+    return SequenceMatcher(None, a, b).ratio() >= _DUPE_THRESHOLD
+
+
+def collapse_duplicate_paragraphs(blocks: list[Block]) -> tuple[list[Block], int]:
+    """Drop a body paragraph that repeats the one immediately before it.
+
+    Only consecutive ``BODY`` blocks are compared, so a sentence legitimately
+    repeated in a different part of the brief ("the Integrity Act commands
+    release of ..." appears in both the summary and the argument) is kept.
+    The longer of the two copies is retained.
+    """
+    out: list[Block] = []
+    removed = 0
+
+    for block in blocks:
+        if (
+            out
+            and block.kind == BODY
+            and out[-1].kind == BODY
+            and _is_duplicate_pair(out[-1].text, block.text)
+        ):
+            if len(block.text) > len(out[-1].text):
+                out[-1] = block
+            removed += 1
+            continue
+        out.append(block)
+
+    return out, removed
+
+
+def parse(text: str, *, skip_caption: bool = True, skip_toc: bool = True,
+          collapse_duplicates: bool = True) -> ParseResult:
     """Turn brief text into a list of :class:`Block`."""
     raw_lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     lines = raw_lines
@@ -465,8 +535,20 @@ def parse(text: str, *, skip_caption: bool = True, skip_toc: bool = True) -> Par
 
         paragraph_buf.append(line)
 
+        # A source line that ends a sentence ends the paragraph.  Without this
+        # two unrelated paragraphs joined by a hard line break would be merged
+        # into one, which is what happens when a brief is written with one
+        # paragraph per line rather than hard-wrapped.
+        if _ENDS_SENTENCE.search(line):
+            flush()
+
     flush()
-    return ParseResult(blocks, skipped_caption, skipped_toc)
+
+    removed = 0
+    if collapse_duplicates:
+        blocks, removed = collapse_duplicate_paragraphs(blocks)
+
+    return ParseResult(blocks, skipped_caption, skipped_toc, removed)
 
 
 def _label_and_text(label: str) -> tuple[str, str]:

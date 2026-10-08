@@ -361,11 +361,13 @@ def _configure_styles(document) -> None:
 
 def build_brief(text: str, output: str | Path, *,
                 skip_caption: bool = True,
-                skip_toc: bool = True) -> Path:
+                skip_toc: bool = True,
+                collapse_duplicates: bool = True) -> Path:
     """Format *text* as a JDF 1987 brief and write it to *output*."""
     from docx import Document
 
-    result = parse(text, skip_caption=skip_caption, skip_toc=skip_toc)
+    result = parse(text, skip_caption=skip_caption, skip_toc=skip_toc,
+                   collapse_duplicates=collapse_duplicates)
 
     document = Document()
     _configure_styles(document)

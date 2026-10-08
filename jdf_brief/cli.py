@@ -29,6 +29,11 @@ def main(argv: list[str] | None = None) -> int:
         help="keep the Table of Contents / Table of Authorities blocks",
     )
     parser.add_argument(
+        "--keep-duplicates", action="store_true",
+        help="keep a paragraph that repeats the one before it (by default a "
+             "near-identical consecutive paragraph is dropped)",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="print the detected block structure without writing a file",
     )
@@ -45,10 +50,12 @@ def main(argv: list[str] | None = None) -> int:
             text,
             skip_caption=not args.include_caption,
             skip_toc=not args.include_toc,
+            collapse_duplicates=not args.keep_duplicates,
         )
-        print("skipped caption:", result.skipped_caption)
-        print("skipped toc    :", result.skipped_toc)
-        print("blocks         :", len(result.blocks))
+        print("skipped caption :", result.skipped_caption)
+        print("skipped toc     :", result.skipped_toc)
+        print("removed dupes   :", result.removed_duplicates)
+        print("blocks          :", len(result.blocks))
         print("-" * 72)
         for block in result.blocks:
             label = block.kind.upper()
@@ -64,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         output,
         skip_caption=not args.include_caption,
         skip_toc=not args.include_toc,
+        collapse_duplicates=not args.keep_duplicates,
     )
     print("wrote %s" % path)
     return 0

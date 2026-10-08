@@ -52,6 +52,7 @@ Then:
 | --- | --- |
 | `--include-caption` | keep the caption block instead of starting at section 1 |
 | `--include-toc` | keep the Table of Contents / Table of Authorities blocks |
+| `--keep-duplicates` | keep a paragraph that repeats the one before it |
 | `--dry-run` | print the detected structure and stop |
 
 ---
@@ -75,6 +76,28 @@ Every measurement below was taken from the sample PDF and is applied exactly.
 
 Sections are renumbered sequentially from the order they appear, so a stray
 `3.` before a table of authorities cannot leak into the finished brief.
+
+### Paragraphs
+
+The two common ways of writing a brief are both handled:
+
+* **One paragraph per line**, as a `.txt` export usually arrives. Each line is
+  its own paragraph.
+* **Hard-wrapped prose**, as a PDF text extraction produces. A line that stops
+  mid-sentence is re-joined with the next one.
+
+The decision is made per line: a source line that ends a sentence (`.`, `?`,
+`!`, optionally followed by a closing quote or bracket) ends the paragraph.
+
+### Repeated paragraphs
+
+An editing pass sometimes leaves the same paragraph twice, differing only in
+punctuation — typically an em-dash version and a hyphen version. When a body
+paragraph is ≥90% similar to the one immediately before it, the shorter copy is
+dropped. Only *consecutive* paragraphs are compared, so a sentence legitimately
+repeated in the summary and again in the argument is kept. Pass
+`--keep-duplicates` to switch this off; `--dry-run` reports how many were
+removed.
 
 ---
 

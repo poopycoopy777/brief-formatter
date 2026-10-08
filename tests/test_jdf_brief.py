@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from jdf_brief.build import _split_label, build_brief  # noqa: E402
 from jdf_brief.citations import italic_segments  # noqa: E402
 from jdf_brief.parse import (  # noqa: E402
+    BODY,
     ISSUE,
     LIST,
     MAJOR,
@@ -224,6 +225,83 @@ This is a records action.
         result = parse(text)
         subs = [(b.letter, b.text) for b in result.blocks if b.kind == SUB]
         self.assertEqual(subs, [("A.", "Jurisdiction"), ("B.", "Nature of the Case")])
+
+    def test_one_paragraph_per_line_is_not_merged(self):
+        # A brief written with each paragraph on its own source line must not
+        # have those paragraphs joined together.
+        text = """1. STATEMENT OF THE CASE
+The district court entered judgment on May 22, 2026. CF, p 123.
+Appellant timely filed his Notice of Appeal on June 24, 2026. CF, p 142-146.
+The April 5 order was interlocutory and contemplated further proceedings.
+"""
+        result = parse(text)
+        bodies = [b.text for b in result.blocks if b.kind == BODY]
+        self.assertEqual(len(bodies), 3)
+        self.assertTrue(bodies[0].startswith("The district court entered judgment"))
+        self.assertTrue(bodies[1].startswith("Appellant timely filed"))
+        self.assertTrue(bodies[2].startswith("The April 5 order"))
+
+    def test_hard_wrapped_prose_is_still_joined(self):
+        # Mid-sentence line breaks (as a PDF text extraction produces) must
+        # still be re-joined into one paragraph.
+        text = """1. STATEMENT OF THE CASE
+The district court entered its final order dismissing all four claims on May
+22, 2026. CF, p 123-131. Appellant timely filed his Notice of Appeal on June
+24, 2026. CF, p 142-146.
+"""
+        result = parse(text)
+        bodies = [b.text for b in result.blocks if b.kind == BODY]
+        self.assertEqual(len(bodies), 1)
+        self.assertIn("May 22, 2026", bodies[0])
+        self.assertIn("June 24, 2026", bodies[0])
+
+    def test_duplicate_consecutive_paragraph_is_collapsed(self):
+        em = "\u2014"
+        first = (
+            "The sole privacy exception, \u00a7 24-31-902(2)(b)(II)(A), decides this "
+            "appeal on three features. First, it is written in video and only in video: "
+            "subsection (2)(a) uses both nouns " + em + " \"video and audio\" " + em + " "
+            "while (2)(b)(II)(A) reaches any video that raises substantial privacy "
+            "concerns and provides that it does not permit the removal of any portion "
+            "of the video that was recorded."
+        )
+        second = first.replace(em, "-") + " Extra trailing sentence."
+        text = "1. ARGUMENT\n%s\n%s\n" % (first, second)
+
+        result = parse(text)
+        bodies = [b.text for b in result.blocks if b.kind == BODY]
+        self.assertEqual(len(bodies), 1)
+        self.assertEqual(result.removed_duplicates, 1)
+        # The longer copy is kept.
+        self.assertTrue(bodies[0].endswith("Extra trailing sentence."))
+
+    def test_distant_repeated_sentence_is_kept(self):
+        # The same sentence legitimately appears in the summary and again in
+        # the argument; only consecutive duplicates are collapsed.
+        opener = (
+            "The Integrity Act commands release of all unedited video and audio "
+            "recordings of the incident under the governing statute."
+        )
+        filler = " ".join(["Filler sentence about the record on appeal."] * 8)
+        text = "1. SUMMARY\n%s\n%s\n2. ARGUMENT\n%s\n%s\n" % (
+            opener, filler, opener, filler,
+        )
+        result = parse(text)
+        self.assertEqual(result.removed_duplicates, 0)
+        joined = " ".join(b.text for b in result.blocks if b.kind == BODY)
+        self.assertEqual(joined.count("commands release of all unedited"), 2)
+
+    def test_collapse_can_be_disabled(self):
+        body = (
+            "A paragraph long enough to qualify for duplicate detection, repeated "
+            "here so that the comparison has enough words to work with comfortably "
+            "and reliably. It runs to more than twenty five words in total overall."
+        )
+        text = "1. ARGUMENT\n%s\n%s\n" % (body, body)
+        self.assertEqual(parse(text).removed_duplicates, 1)
+        self.assertEqual(
+            parse(text, collapse_duplicates=False).removed_duplicates, 0
+        )
 
     def test_numbered_issue_list_stays_a_list(self):
         text = """1. ISSUES PRESENTED FOR REVIEW
